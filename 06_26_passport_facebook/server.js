@@ -1,0 +1,166 @@
+const mongoclient = require("mongodb").MongoClient;
+const ObjId = require("mongodb").ObjectId;
+const url = `mongodb+srv://admin:1234@cluster0.gnyth4u.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+let mydb;
+mongoclient
+  .connect(url)
+  .then((client) => {
+    mydb = client.db("myboard");
+    // mydb.collection('post').find().toArray().then(result =>{
+    //     console.log(result);
+    // })
+    console.log("mongodb ok ");
+    
+    const mysql = require("mysql");
+    mysqlconn = mysql.createConnection({
+      host: "localhost",
+      user: "jwbook",
+      password: "1234",
+      database: "myboard",
+    });
+    mysqlconn.connect();
+    console.log("mysqlconn ok ");
+
+    app.listen(8080, function () {
+      console.log("포트 8080으로 서버 대기중 ... ");
+    });
+  })
+  .catch((err) => {
+    console.log(err);
+  });
+
+const express = require("express");
+const app = express();
+
+app.use(express.static('public')); //static 미들웨어 설정
+
+//body-parser 라이브러리 추가
+const bodyParser = require("body-parser");
+app.use(bodyParser.urlencoded({ extended: true }));
+app.set("view engine", "ejs");
+
+app.get("/book", function (req, res) {
+  res.send("도서 목록 관련 페이지입니다.");
+});
+
+app.use('/', require('./routes/post.js'));
+app.use('/', require('./routes/account.js'));
+
+// app.get('/content/:_id', (req, res) => {
+//   //console.log(req.params._id);
+//   mydb.collection('post')
+//     .findOne({_id:new ObjId(req.params._id)})
+//     .then(result => {
+//       res.render('content.ejs',{data:result});
+//     })
+//     .catch((err) => {
+//       console.log(err);
+//       res.status(500).send();
+//     });
+  
+// });
+
+// app.post('/edit', (req, res) => {
+//   console.log(req.body);
+//   res.render('edit.ejs', {data:req.body})
+// });
+
+
+
+
+//////////// cookie test
+const cookieParser = require('cookie-parser');
+app.use(cookieParser('암호화키'));
+app.get('/cookie', (req, res) => {
+  let milk = parseInt(req.signedCookies.milk) + 1000;
+  if (isNaN(milk)) {
+    milk = 0;
+  }
+  res.cookie('milk', milk, {signed:true});
+  res.cookie('name', '전은수', {signed:true});
+  res.send('product:' + req.signedCookies.milk+": "+'name:'+req.signedCookies.name);
+  
+
+});
+
+//////////// session test
+const session = require('express-session');
+app.use(session({
+  secret : 'adsfasdaf',
+  resave : false,
+  saveUninitialized : false 
+}));
+
+// app.get('/session', (req, res) =>{
+//   if(isNaN(req.session.milk)){
+//     req.session.milk = 0;
+//   }
+//   req.session.milk += 1000;
+//   res.send(`session : ${req.session.milk}원`);
+// });
+
+
+
+app.get('/bank', (req, res)=>{
+  // 로그인되면 /bank 접속 가능
+  if(typeof req.session.user != 'undefined'){  // 세션에 userid가 있으면 로그인된 상태
+    res.send(`${req.session.user.userid}님 자산 현황`);
+  }else{
+    res.send('로그인부터 해주세요');
+  }
+});
+
+
+
+app.get("/", function (req, res) {
+  if(req.session.user){
+    //res.send('이미 로그인 되어있습니다.');
+    res.render('index.ejs', {user:req.session.user});
+  }else{
+    res.render('index.ejs', {user:null});
+  }
+});
+
+
+app.get("/signup", (req, res)=>{
+  res.render('signup');
+});
+
+///// 회원가입 처리
+const sha = require('sha256');
+
+app.post("/signup", (req, res)=>{
+  console.log(req.body);
+
+  const crypto = require('crypto');
+  const generateSalt = (length = 16) => {
+    return crypto.randomBytes(length).toString('hex');
+  };
+  const salt = generateSalt();
+  console.log(`Generated salt : ${salt}`);
+
+  console.log(`salt 없는 pw hash: `, sha(req.body.userpw));
+  req.body.userpw = sha(req.body.userpw + salt);
+  console.log(`salt 있는 pw hash: `, req.body.userpw);
+  
+  mydb.collection('account')
+    .insertOne(req.body)
+    .then(result => {
+      console.log('회원가입 성공');
+
+      //mysql에 salt 저장
+      const sql = `insert into UserSalt (userid, salt)
+                    values (?, ?)`;
+      mysqlconn.query(sql, [req.body.userid, salt], (err, result2)=>{
+        if (err){
+          console.log(err);
+        }else{
+          console.log('salt 저장 성공');
+        }
+      });
+    })
+    .catch(err=>{
+      console.log(err);
+    });
+  res.redirect('/');
+});
